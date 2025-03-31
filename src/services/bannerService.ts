@@ -1,49 +1,64 @@
+import { invoke } from "@tauri-apps/api/core";
+
 export interface Banner {
     id: string;
-    imageFile: Blob;
+    image_binary: number[];
     title: string;
-    releaseDay: string;
-    releaseTime: string;
-    currentEpisodes: number;
-    totalEpisodes: number;
+    release_day: string;
+    release_time: string;
+    current_episodes: number;
+    total_episodes: number;
 }
 
 export class BannerService {
-    private banners: Banner[] = [];
+    // private banners: Banner[] = [];
 
-    addBanner(banner: Omit<Banner, 'id'>): Banner {
-        if (this.banners.some(b => b.title.toLowerCase() === banner.title.toLowerCase())) {
-            throw new Error('A banner with this title already exists');
-        }
+    async addBanner(new_banner: Omit<Banner, 'id'>) {
+        // if (this.banners.some(b => b.title.toLowerCase() === new_banner.title.toLowerCase())) {
+        //     throw new Error('A banner with this title already exists');
+        // }
 
-        const newBanner: Banner = {
-            ...banner,
+        const banner: Banner = {
+            ...new_banner,
             id: crypto.randomUUID()
         };
-        this.banners.push(newBanner);
-        return newBanner;
+        // this.banners.push(banner);
+        await invoke ("add_banner", { banner });
     }
 
-    deleteBanner(title: string): Banner[] {
-        this.banners = this.banners.filter((banner) => banner.title !== title);
-        return [...this.banners];
+    async deleteBanner(id: string) {
+        // this.banners = this.banners.filter((banner) => banner.id !== id);
+        // return [...this.banners];
+        await invoke("delete_banner", { id })
+
     }
 
-    searchBanners(query: string): Banner[] {
-        const searchQuery = query.toLowerCase();
-        return this.banners.filter(banner =>
-            banner.title.toLowerCase().includes(searchQuery)
-        );
+    async searchBanners(query: string): Promise<Banner[]> {
+        // const searchQuery = query.toLowerCase();
+        // return this.banners.filter(banner =>
+        //     banner.title.toLowerCase().includes(searchQuery)
+        // );
+        return await invoke("search_banners", { query })
     }
 
-    getAllBanners(): Banner[] {
-        return [...this.banners];
+    async getAllBanners(): Promise<Banner[]> {
+        // return [...this.banners];
+        return await invoke("get_all_banners");
     }
 
-    updateBanner(id: string, updates: Partial<Omit<Banner, 'id'>>): void {
-        const index = this.banners.findIndex(b => b.id === id);
-        if (index !== -1) {
-            this.banners[index] = { ...this.banners[index], ...updates };
-        }
+    async updateCurrentEpisodes(id: string, current_episodes: number) {
+        await invoke("update_banner_current_episodes", { id, currentEpisodes: current_episodes });
+    }
+
+    async updateTotalEpisodes(id: string, total_episodes: number) {
+        await invoke("update_banner_total_episodes", { id, totalEpisodes: total_episodes });
+    }
+
+    async updateReleaseDay(id: string, release_day: string) {
+        await invoke("update_banner_release_day", { id, releaseDay: release_day });
+    }
+
+    async updateReleaseTime(id: string, release_time: string) {
+        await invoke("update_banner_release_time", { id, releaseTime: release_time });
     }
 } 

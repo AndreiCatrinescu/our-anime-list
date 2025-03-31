@@ -2,22 +2,22 @@ import { BannerService, Banner } from '../bannerService';
 
 describe('BannerService', () => {
     let bannerService: BannerService;
-    let mockBlob: Blob;
+    let mock_binary: number[];
 
     beforeEach(() => {
         bannerService = new BannerService();
-        mockBlob = new Blob(['test'], { type: 'image/jpeg' });
+        mock_binary = Array.from(new Uint8Array());
     });
 
     describe('addBanner', () => {
         it('should add a new banner', () => {
             const banner: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             const result = bannerService.addBanner(banner);
@@ -29,12 +29,12 @@ describe('BannerService', () => {
 
         it('should not add banner if title exists', () => {
             const banner: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             bannerService.addBanner(banner);
@@ -44,14 +44,15 @@ describe('BannerService', () => {
     });
 
     describe('deleteBanner', () => {
-        it('should delete banner by title', () => {
-            const banner: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+        it('should delete banner by id', () => {
+            const banner: Banner = {
+                id: 'test-id',
+                image_binary: mock_binary,
                 title: 'Test Title',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             bannerService.addBanner(banner);
@@ -60,18 +61,19 @@ describe('BannerService', () => {
             expect(result).toHaveLength(0);
         });
 
-        it('should not delete anything if title does not exist', () => {
-            const banner: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+        it('should not delete anything if id does not exist', () => {
+            const banner: Banner = {
+                id: 'test-id',
+                image_binary: mock_binary,
                 title: 'Test Title',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             bannerService.addBanner(banner);
-            const result = bannerService.deleteBanner('Non-existent Title');
+            const result = bannerService.deleteBanner('Non-existent id');
 
             expect(result).toHaveLength(1);
             expect(result[0]).toMatchObject(banner);
@@ -81,21 +83,21 @@ describe('BannerService', () => {
     describe('searchBanners', () => {
         it('should return matching banners', () => {
             const banner1: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title 1',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             const banner2: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title 2',
-                releaseDay: 'Tuesday',
-                releaseTime: '13:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Tuesday',
+                release_time: '13:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             bannerService.addBanner(banner1);
@@ -108,12 +110,12 @@ describe('BannerService', () => {
 
         it('should be case insensitive', () => {
             const banner: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             bannerService.addBanner(banner);
@@ -127,21 +129,21 @@ describe('BannerService', () => {
     describe('getAllBanners', () => {
         it('should return all banners', () => {
             const banner1: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title 1',
-                releaseDay: 'Monday',
-                releaseTime: '12:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Monday',
+                release_time: '12:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             const banner2: Omit<Banner, 'id'> = {
-                imageFile: mockBlob,
+                image_binary: mock_binary,
                 title: 'Test Title 2',
-                releaseDay: 'Tuesday',
-                releaseTime: '13:00',
-                currentEpisodes: 0,
-                totalEpisodes: 12
+                release_day: 'Tuesday',
+                release_time: '13:00',
+                current_episodes: 0,
+                total_episodes: 12
             };
 
             bannerService.addBanner(banner1);
