@@ -3,14 +3,14 @@ use banner_repo::BannerRepo;
 use banner_repo::BannerStorage;
 use std::sync::RwLock;
 
-mod banner;
-mod banner_repo;
+pub mod banner;
+pub mod banner_repo;
 
 type RepoLock<'a> = tauri::State<'a, RwLock<BannerRepo>>;
 
 #[tauri::command]
-fn add_banner(banner: Banner, repo: RepoLock<'_>) {
-    repo.write().unwrap().add_banner(banner);
+fn add_banner(banner: Banner, repo: RepoLock<'_>) -> Result<(), String> {
+    repo.write().unwrap().add_banner(banner)
 }
 
 #[tauri::command]
@@ -21,6 +21,11 @@ fn delete_banner(id: String, repo: RepoLock<'_>) {
 #[tauri::command]
 fn search_banners(query: String, repo: RepoLock<'_>) -> Vec<Banner> {
     repo.read().unwrap().search_banners(query)
+}
+
+#[tauri::command]
+fn get_sorted_banners_release_day(repo: RepoLock<'_>) -> Vec<Banner> {
+    repo.read().unwrap().sort_banners_by_release_day()
 }
 
 #[tauri::command]
@@ -73,7 +78,8 @@ pub fn run() {
             update_banner_current_episodes,
             update_banner_total_episodes,
             update_banner_release_day,
-            update_banner_release_time
+            update_banner_release_time,
+            get_sorted_banners_release_day
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
