@@ -6,20 +6,31 @@ pub struct BannerRepo {
 
 pub trait BannerStorage {
     fn add_banner(&mut self, banner: Banner) -> Result<(), String>;
-    fn delete_banner(&mut self, banner_id: String);
+    fn delete_banner(&mut self, title: String);
     fn search_banners(&self, query: String) -> Vec<Banner>;
     fn get_all_banners(&self) -> Vec<Banner>;
-    fn update_banner_current_episodes(&mut self, banner_id: String, current_episodes: u32);
-    fn update_banner_total_episodes(&mut self, banner_id: String, total_episodes: u32);
-    fn update_banner_release_day(&mut self, banner_id: String, release_day: String);
-    fn update_banner_release_time(&mut self, banner_id: String, release_time: String);
+    fn update_banner_current_episodes(&mut self, title: String, current_episodes: u32);
+    fn update_banner_total_episodes(&mut self, title: String, total_episodes: u32);
+    fn update_banner_release_day(&mut self, title: String, release_day: String);
+    fn update_banner_release_time(&mut self, title: String, release_time: String);
 }
 
 impl BannerRepo {
     pub fn new() -> Self {
-        BannerRepo {
-            banners: Vec::new(),
+        let mut banners = Vec::new();
+
+        for i in 1..101 {
+            banners.push(Banner {
+                image_binary: Vec::new(),
+                title: i.to_string(),
+                release_day: String::from("Monday"),
+                release_time: String::from("12:30"),
+                current_episodes: 3,
+                total_episodes: 4,
+            });
         }
+
+        BannerRepo { banners }
     }
 }
 
@@ -28,17 +39,17 @@ impl BannerStorage for BannerRepo {
         if let Some(_) = self
             .banners
             .iter()
-            .find(|existing| existing.id == banner.id)
+            .find(|existing| existing.title == banner.title)
         {
-            return Err(String::from("banner with the same id already exists"));
+            return Err(String::from("banner with the same title already exists"));
         }
         self.banners.push(banner);
 
         Ok(())
     }
 
-    fn delete_banner(&mut self, banner_id: String) {
-        self.banners.retain(|banner| banner.id != banner_id);
+    fn delete_banner(&mut self, title: String) {
+        self.banners.retain(|banner| banner.title != title);
     }
 
     fn search_banners(&self, query: String) -> Vec<Banner> {
@@ -53,42 +64,26 @@ impl BannerStorage for BannerRepo {
         self.banners.clone()
     }
 
-    fn update_banner_current_episodes(&mut self, banner_id: String, current_episodes: u32) {
-        if let Some(banner) = self
-            .banners
-            .iter_mut()
-            .find(|banner| banner.id == banner_id)
-        {
+    fn update_banner_current_episodes(&mut self, title: String, current_episodes: u32) {
+        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
             banner.current_episodes = current_episodes;
         }
     }
 
-    fn update_banner_total_episodes(&mut self, banner_id: String, total_episodes: u32) {
-        if let Some(banner) = self
-            .banners
-            .iter_mut()
-            .find(|banner| banner.id == banner_id)
-        {
+    fn update_banner_total_episodes(&mut self, title: String, total_episodes: u32) {
+        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
             banner.total_episodes = total_episodes;
         }
     }
 
-    fn update_banner_release_day(&mut self, banner_id: String, release_day: String) {
-        if let Some(banner) = self
-            .banners
-            .iter_mut()
-            .find(|banner| banner.id == banner_id)
-        {
+    fn update_banner_release_day(&mut self, title: String, release_day: String) {
+        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
             banner.release_day = release_day;
         }
     }
 
-    fn update_banner_release_time(&mut self, banner_id: String, release_time: String) {
-        if let Some(banner) = self
-            .banners
-            .iter_mut()
-            .find(|banner| banner.id == banner_id)
-        {
+    fn update_banner_release_time(&mut self, title: String, release_time: String) {
+        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
             banner.release_time = release_time;
         }
     }
@@ -100,6 +95,20 @@ impl BannerRepo {
         sorted.sort_by(|banner1, banner2| banner1.release_day.cmp(&banner2.release_day));
         sorted
     }
+
+    pub fn get_paged_banners(&self, page_size: usize, page_count: usize) -> Vec<Banner> {
+        if page_size * page_count >= self.banners.len() {
+            return vec![];
+        }
+
+        let end = if page_size * page_count + page_size <= self.banners.len() {
+            page_size * page_count + page_size
+        } else {
+            self.banners.len()
+        };
+
+        self.banners[(page_size * page_count)..end].to_vec()
+    }
 }
 
 #[cfg(test)]
@@ -110,7 +119,6 @@ mod tests {
     fn add_banner_not_existing_ok() {
         let mut repo = BannerRepo::new();
         let result = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -126,7 +134,6 @@ mod tests {
     fn add_banner_existing_err() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -135,7 +142,6 @@ mod tests {
             total_episodes: 2,
         });
         let result = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -145,7 +151,7 @@ mod tests {
         });
 
         assert_eq!(
-            Err(String::from("banner with the same id already exists")),
+            Err(String::from("banner with the same title already exists")),
             result
         );
     }
@@ -154,7 +160,6 @@ mod tests {
     fn delete_banner_existing() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -165,7 +170,7 @@ mod tests {
 
         let size = repo.banners.len();
 
-        repo.delete_banner("1".to_owned());
+        repo.delete_banner(String::from("testtitle"));
 
         assert_eq!(size - 1, repo.banners.len());
     }
@@ -174,7 +179,6 @@ mod tests {
     fn delete_banner_not_existing() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -185,7 +189,7 @@ mod tests {
 
         let size = repo.banners.len();
 
-        repo.delete_banner("2".to_owned());
+        repo.delete_banner(String::from("nonexist"));
 
         assert_eq!(size, repo.banners.len());
     }
@@ -194,7 +198,6 @@ mod tests {
     fn search_banners_existing() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -212,7 +215,6 @@ mod tests {
     fn search_banners_not_existing() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -230,7 +232,6 @@ mod tests {
     fn update_banner_current_episodes() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -239,7 +240,7 @@ mod tests {
             total_episodes: 2,
         });
 
-        repo.update_banner_current_episodes("1".to_owned(), 2);
+        repo.update_banner_current_episodes("testtitle".to_owned(), 2);
 
         let banner = &repo.banners[0];
 
@@ -250,7 +251,6 @@ mod tests {
     fn update_banner_total_episodes() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -259,7 +259,7 @@ mod tests {
             total_episodes: 2,
         });
 
-        repo.update_banner_total_episodes("1".to_owned(), 2);
+        repo.update_banner_total_episodes("testtitle".to_owned(), 2);
 
         let banner = &repo.banners[0];
 
@@ -270,7 +270,6 @@ mod tests {
     fn update_banner_release_day() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -279,7 +278,7 @@ mod tests {
             total_episodes: 2,
         });
 
-        repo.update_banner_release_day("1".to_owned(), "newday".to_owned());
+        repo.update_banner_release_day("testtitle".to_owned(), "newday".to_owned());
 
         let banner = &repo.banners[0];
 
@@ -290,7 +289,6 @@ mod tests {
     fn update_banner_release_time() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "testday".to_owned(),
@@ -299,7 +297,7 @@ mod tests {
             total_episodes: 2,
         });
 
-        repo.update_banner_release_time("1".to_owned(), "newtime".to_owned());
+        repo.update_banner_release_time("testtitle".to_owned(), "newtime".to_owned());
 
         let banner = &repo.banners[0];
 
@@ -310,7 +308,6 @@ mod tests {
     fn sort_banners_by_release_day() {
         let mut repo = BannerRepo::new();
         let _ = repo.add_banner(Banner {
-            id: "1".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle".to_owned(),
             release_day: "2025-01-03".to_owned(),
@@ -319,7 +316,6 @@ mod tests {
             total_episodes: 2,
         });
         let _ = repo.add_banner(Banner {
-            id: "2".to_owned(),
             image_binary: Vec::new(),
             title: "testtitle2".to_owned(),
             release_day: "2025-01-04".to_owned(),
@@ -330,6 +326,6 @@ mod tests {
 
         let banner = &repo.sort_banners_by_release_day()[0];
 
-        assert_eq!(banner.id, "1".to_owned());
+        assert_eq!(banner.title, "testtitle".to_owned());
     }
 }

@@ -1,7 +1,12 @@
 import "./App.css";
 import { useState, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import InfoBanner from "./components/InfoBanner";
-import { BannerService, Banner } from "./services/bannerService";
+import {
+  BannerService,
+  Banner,
+  BannerLocalMemory,
+} from "./services/bannerService";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const DAYS_OF_WEEK = [
@@ -16,6 +21,46 @@ const DAYS_OF_WEEK = [
 
 type View = "home" | "add" | "view" | "modify";
 
+function useHasScrolledToBottom(): boolean {
+  const [isBottom, setIsBottom] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrolledToBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 10;
+
+      setIsBottom(scrolledToBottom);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  return isBottom;
+}
+
+function useNetworkStatus() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const result = await invoke<boolean>("check_network");
+        setIsOnline(result);
+      } catch (err) {
+        setIsOnline(false);
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 10000); // poll every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  return isOnline;
+}
+
 function App() {
   const [currentView, setCurrentView] = useState<View>("home");
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -26,24 +71,81 @@ function App() {
   const [currentEpisodes, setCurrentEpisodes] = useState<number>(0);
   const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
   const [searchText, setSearchText] = useState("");
-  const bannerServiceRef = useRef(new BannerService());
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageCount, setPageCount] = useState(0);
+  const isBottom = useHasScrolledToBottom();
+  const isOnline = useNetworkStatus();
+  const bannerServiceRef = useRef<BannerService | BannerLocalMemory>(
+    isOnline ? new BannerService() : new BannerLocalMemory()
+  );
+
+  const resetBanners = async () => {
+    if (bannerServiceRef.current instanceof BannerLocalMemory) return;
+    setBanners([]);
+    setPageCount(0);
+    setHasMore(true);
+  };
+
+  // TODO
+  useEffect(() => {
+    if (isOnline) {
+      const remoteService = new BannerService();
+      console.log("online");
+
+      if (bannerServiceRef.current instanceof BannerLocalMemory) {
+        const change_log = bannerServiceRef.current.getChangeLog();
+        console.log(change_log);
+        remoteService.syncServer(change_log);
+      }
+
+      bannerServiceRef.current = remoteService;
+    } else {
+      console.log("offline");
+      const localService = new BannerLocalMemory();
+      if (bannerServiceRef.current instanceof BannerService) {
+        localService.cacheBanners(banners);
+        bannerServiceRef.current = localService;
+      }
+    }
+  });
+
+  useEffect(() => {
+    if (currentView === "view" || currentView === "modify") {
+      if (banners.length === 0) {
+        loadBanners();
+      } else if (isBottom) {
+        loadBanners();
+      }
+    } else {
+      resetBanners();
+      console.log("reset");
+    }
+  }, [isBottom, currentView]);
 
   const loadBanners = async () => {
+    if (isLoading || !hasMore) return;
+    setIsLoading(true);
+
     if (searchText.trim() === "") {
-      // setBanners([]);
-      let new_banners = await bannerServiceRef.current.getAllBanners();
-      setTimeout(() => {
-        setBanners(new_banners);
-      }, 0);
-    } else {
-      // setBanners([]);
-      let new_banners = await bannerServiceRef.current.searchBanners(
-        searchText
+      const newBanners = await bannerServiceRef.current.getPagedBanners(
+        pageCount
       );
-      setTimeout(() => {
-        setBanners(new_banners);
-      }, 0);
+
+      if (newBanners.length === 0) {
+        setHasMore(false); // no more data
+      } else {
+        setPageCount(pageCount + 1);
+        console.log(pageCount);
+        setBanners((prev) => [...prev, ...newBanners]);
+      }
+    } else {
+      const results = await bannerServiceRef.current.searchBanners(searchText);
+      setBanners(results);
+      setHasMore(false); // disable infinite scroll on search
     }
+
+    setIsLoading(false);
   };
 
   const blobToBinary = (blob: Blob): Promise<number[]> => {
@@ -86,24 +188,29 @@ function App() {
       alert(error instanceof Error ? error.message : "Failed to add banner");
     }
   };
+  const firstLoad = useRef(true);
 
   useEffect(() => {
-    if (currentView === "view" || currentView === "modify") {
-      loadBanners();
-    } else setBanners([]);
-  }, [searchText, currentView]);
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      return;
+    }
+    resetBanners();
+    loadBanners();
+    console.log("search");
+  }, [searchText]);
 
   const handleViewChange = (newView: View) => {
     setCurrentView(newView);
     if (newView === "view" || newView === "modify") {
-      loadBanners();
+      // loadBanners();
     }
   };
 
   const handleDeleteBanner = (banner: Banner) => {
     if (window.confirm("Are you sure you want to delete this banner?")) {
-      bannerServiceRef.current.deleteBanner(banner.id);
-      loadBanners();
+      bannerServiceRef.current.deleteBanner(banner.title);
+      // loadBanners();
     }
   };
 
@@ -162,22 +269,6 @@ function App() {
       </button>
     </div>
   );
-
-  // const hasScrolledToBottom = () => {
-  //   const [isBottom, setIsBottom] = useState(false);
-
-  //   useEffect(() => {
-  //     const handleScroll = () => {
-  //       const scrolledToBottom =
-  //         window.innerHeight + window.scrollY >=
-  //         document.documentElement.scrollHeight;
-  //       setIsBottom(scrolledToBottom);
-  //     };
-  //     window.addEventListener("scroll", handleScroll);
-  //     return () => window.removeEventListener("scroll", handleScroll);
-  //   }, []);
-  //   return isBottom;
-  // };
 
   const renderAddView = () => (
     <div className="container">
@@ -332,7 +423,7 @@ function App() {
       </div>
       <div className="d-flex flex-column gap-4">
         {banners.map((banner) => (
-          <div key={banner.id} className="card">
+          <div key={banner.title} className="card">
             <div className="card-body bg-secondary">
               <div className="row">
                 <div className="col-md-6">
@@ -360,7 +451,7 @@ function App() {
                         value={banner.current_episodes}
                         onChange={(e) =>
                           handleUpdateCurrentEpisodes(
-                            banner.id,
+                            banner.title,
                             parseInt(e.target.value)
                           )
                         }
@@ -375,7 +466,7 @@ function App() {
                         value={banner.total_episodes}
                         onChange={(e) =>
                           handleUpdateTotalEpisodes(
-                            banner.id,
+                            banner.title,
                             parseInt(e.target.value)
                           )
                         }
@@ -387,7 +478,7 @@ function App() {
                         className="form-select"
                         value={banner.release_day}
                         onChange={(e) =>
-                          handleUpdateReleaseDay(banner.id, e.target.value)
+                          handleUpdateReleaseDay(banner.title, e.target.value)
                         }
                       >
                         {DAYS_OF_WEEK.map((day) => (
@@ -404,7 +495,7 @@ function App() {
                         className="form-control"
                         value={banner.release_time}
                         onChange={(e) =>
-                          handleUpdateReleaseTime(banner.id, e.target.value)
+                          handleUpdateReleaseTime(banner.title, e.target.value)
                         }
                       />
                     </div>
@@ -426,7 +517,9 @@ function App() {
 
   return (
     <div className="container py-4">
-      <h1 className="text-center mb-4">Track Anime</h1>
+      <h1 className="text-center mb-4">
+        Track Anime {isOnline ? "" : "(Offline Mode)"}
+      </h1>
       {currentView === "home" && renderHomeView()}
       {currentView === "add" && renderAddView()}
       {currentView === "view" && renderViewView()}
