@@ -1,6 +1,14 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-fn main() {
-    our_anime_list_lib::run()
+use our_anime_list_lib::*;
+
+#[tokio::main]
+async fn main() {
+    match set_up_database().await {
+        Ok(db) => run_app(db),
+        Err(error) => {
+            eprintln!("{}", error);
+            return;
+        }
+    }
 }

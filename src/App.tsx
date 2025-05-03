@@ -238,6 +238,11 @@ function App() {
     setBanners(new_banners);
   };
 
+  const handleSearch = (e: React.SetStateAction<string>) => {
+    setPageCount(0);
+    setSearchText(e);
+  };
+
   // const renderHomeView = () => (
   //   <div
   //     className="d-flex flex-column gap-3 align-items-center justify-content-center"
@@ -539,13 +544,13 @@ function App() {
           handleViewChange={handleViewChange}
           searchText={searchText}
           banners={banners}
-          searchTextChange={setSearchText}
+          searchTextChange={handleSearch}
         ></ViewView>
       )}
       {currentView === "modify" && (
         <ModifyView
           handleUpdateTotalEpisodes={handleUpdateTotalEpisodes}
-          searchTextChange={setSearchText}
+          searchTextChange={handleSearch}
           handleViewChange={handleViewChange}
           handleDeleteBanner={handleDeleteBanner}
           searchText={searchText}

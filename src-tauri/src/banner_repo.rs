@@ -1,99 +1,190 @@
 use crate::banner::Banner;
+use sqlx::Sqlite;
 
 pub struct BannerRepo {
-    banners: Vec<Banner>,
+    // banners: Vec<Banner>,
+    database: sqlx::Pool<Sqlite>,
 }
 
-pub trait BannerStorage {
-    fn add_banner(&mut self, banner: Banner) -> Result<(), String>;
-    fn delete_banner(&mut self, title: String);
-    fn search_banners(&self, query: String, page_size: usize, page_count: usize) -> Vec<Banner>;
-    fn get_all_banners(&self) -> Vec<Banner>;
-    fn update_banner_current_episodes(&mut self, title: String, current_episodes: u32);
-    fn update_banner_total_episodes(&mut self, title: String, total_episodes: u32);
-    fn update_banner_release_day(&mut self, title: String, release_day: String);
-    fn update_banner_release_time(&mut self, title: String, release_time: String);
-    fn sort_banners_by_release_day(&self) -> Vec<Banner>;
-    fn get_paged_banners(&self, page_size: usize, page_count: usize) -> Vec<Banner>;
-}
+// pub trait BannerStorage {
+//     fn add_banner(&mut self, banner: Banner) -> Result<(), String>;
+//     fn delete_banner(&mut self, title: String);
+//     fn search_banners(&self, query: String, page_size: usize, page_count: usize) -> Vec<Banner>;
+//     fn get_all_banners(&self) -> Vec<Banner>;
+//     fn update_banner_current_episodes(&mut self, title: String, current_episodes: u32);
+//     fn update_banner_total_episodes(&mut self, title: String, total_episodes: u32);
+//     fn update_banner_release_day(&mut self, title: String, release_day: String);
+//     fn update_banner_release_time(&mut self, title: String, release_time: String);
+//     fn sort_banners_by_release_day(&self) -> Vec<Banner>;
+//     fn get_paged_banners(&self, page_size: usize, page_count: usize) -> Vec<Banner>;
+// }
 
 impl BannerRepo {
-    pub fn new() -> Self {
+    pub fn new(database: sqlx::Pool<Sqlite>) -> Self {
         BannerRepo {
-            banners: Vec::new(),
+            // banners: Vec::new(),
+            database,
         }
     }
 }
 
-impl BannerStorage for BannerRepo {
-    fn add_banner(&mut self, banner: Banner) -> Result<(), String> {
-        if let Some(_) = self
-            .banners
-            .iter()
-            .find(|existing| existing.title == banner.title)
-        {
-            return Err(String::from("banner with the same title already exists"));
-        }
-        self.banners.push(banner);
+impl BannerRepo {
+    pub async fn add_banner(&mut self, banner: Banner) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            INSERT INTO Banners (
+                image_binary,
+                title,
+                release_day,
+                release_time,
+                current_episodes,
+                total_episodes
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&banner.image_binary)
+        .bind(&banner.title)
+        .bind(&banner.release_day)
+        .bind(&banner.release_time)
+        .bind(banner.current_episodes as i64)
+        .bind(banner.total_episodes as i64)
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
 
         Ok(())
     }
 
-    fn delete_banner(&mut self, title: String) {
-        self.banners.retain(|banner| banner.title != title);
+    pub async fn delete_banner(&mut self, title: String) {
+        let _ = sqlx::query(r#"DELETE FROM Banners WHERE title = ?"#)
+            .bind(title)
+            .execute(&self.database)
+            .await;
     }
 
-    fn search_banners(&self, query: String, page_size: usize, page_count: usize) -> Vec<Banner> {
-        self.banners
-            .iter()
-            .filter(|banner| banner.title.contains(&query))
-            .skip(page_count * page_size)
-            .take(page_size)
-            .cloned()
-            .collect()
+    pub async fn search_banners(
+        &self,
+        query: String,
+        page_size: usize,
+        page_count: usize,
+    ) -> Vec<Banner> {
+        sqlx::query_as(
+            r#"
+        SELECT * FROM Banners
+        WHERE title LIKE ?
+        LIMIT ? OFFSET ?"#,
+        )
+        .bind(format!("%{}%", query))
+        .bind(page_size as i64)
+        .bind(page_count as i64 * page_size as i64)
+        .fetch_all(&self.database)
+        .await
+        .unwrap()
     }
 
-    fn get_all_banners(&self) -> Vec<Banner> {
-        self.banners.clone()
+    pub async fn get_all_banners(&self) -> Vec<Banner> {
+        sqlx::query_as(r#"SELECT * FROM Banners"#)
+            .fetch_all(&self.database)
+            .await
+            .unwrap()
     }
 
-    fn update_banner_current_episodes(&mut self, title: String, current_episodes: u32) {
-        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
-            banner.current_episodes = current_episodes;
-        }
+    pub async fn update_banner_current_episodes(&mut self, title: String, current_episodes: u32) {
+        let _ = sqlx::query(
+            r#"
+        UPDATE Banners
+        SET current_episodes = ?
+        WHERE title = ?"#,
+        )
+        .bind(current_episodes)
+        .bind(title)
+        .execute(&self.database)
+        .await;
     }
 
-    fn update_banner_total_episodes(&mut self, title: String, total_episodes: u32) {
-        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
-            banner.total_episodes = total_episodes;
-        }
+    pub async fn update_banner_total_episodes(&mut self, title: String, total_episodes: u32) {
+        let _ = sqlx::query(
+            r#"
+        UPDATE Banners
+        SET total_episodes = ?
+        WHERE title = ?"#,
+        )
+        .bind(total_episodes)
+        .bind(title)
+        .execute(&self.database)
+        .await;
     }
 
-    fn update_banner_release_day(&mut self, title: String, release_day: String) {
-        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
-            banner.release_day = release_day;
-        }
+    pub async fn update_banner_release_day(&mut self, title: String, release_day: String) {
+        let _ = sqlx::query(
+            r#"
+        UPDATE Banners
+        SET release_day = ?
+        WHERE title = ?"#,
+        )
+        .bind(release_day)
+        .bind(title)
+        .execute(&self.database)
+        .await;
     }
 
-    fn update_banner_release_time(&mut self, title: String, release_time: String) {
-        if let Some(banner) = self.banners.iter_mut().find(|banner| banner.title == title) {
-            banner.release_time = release_time;
-        }
+    pub async fn update_banner_release_time(&mut self, title: String, release_time: String) {
+        let _ = sqlx::query(
+            r#"
+        UPDATE Banners
+        SET release_time = ?
+        WHERE title = ?"#,
+        )
+        .bind(release_time)
+        .bind(title)
+        .execute(&self.database)
+        .await;
     }
 
-    fn sort_banners_by_release_day(&self) -> Vec<Banner> {
-        let mut sorted = self.banners.clone();
-        sorted.sort_by(|banner1, banner2| banner1.release_day.cmp(&banner2.release_day));
-        sorted
+    pub async fn sort_banners_by_release_day(
+        &self,
+        page_size: usize,
+        page_count: usize,
+    ) -> Vec<Banner> {
+        sqlx::query_as(
+            r#"
+            SELECT * FROM banners
+            ORDER BY 
+            ( 
+                ( 
+                    (CASE release_day
+                        WHEN 'Sunday' THEN 0
+                        WHEN 'Monday' THEN 1
+                        WHEN 'Tuesday' THEN 2
+                        WHEN 'Wednesday' THEN 3
+                        WHEN 'Thursday' THEN 4
+                        WHEN 'Friday' THEN 5
+                        WHEN 'Saturday' THEN 6
+                        END
+                    ) 
+                    - strftime('%w', 'now') + 7
+                ) % 7
+            )
+            LIMIT ? OFFSET ?;"#,
+        )
+        .bind(page_size as i64)
+        .bind(page_count as i64 * page_size as i64)
+        .fetch_all(&self.database)
+        .await
+        .unwrap()
     }
 
-    fn get_paged_banners(&self, page_size: usize, page_count: usize) -> Vec<Banner> {
-        self.banners
-            .iter()
-            .skip(page_count * page_size)
-            .take(page_size)
-            .cloned()
-            .collect()
+    pub async fn get_paged_banners(&self, page_size: usize, page_count: usize) -> Vec<Banner> {
+        sqlx::query_as(
+            r#"
+        SELECT * FROM Banners
+        LIMIT ? OFFSET ?"#,
+        )
+        .bind(page_size as i64)
+        .bind(page_count as i64 * page_size as i64)
+        .fetch_all(&self.database)
+        .await
+        .unwrap()
     }
 }
 

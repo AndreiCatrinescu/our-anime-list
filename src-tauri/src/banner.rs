@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use sqlx::prelude::FromRow;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, FromRow)]
 pub struct Banner {
     pub image_binary: Vec<u8>,
     pub title: String,
