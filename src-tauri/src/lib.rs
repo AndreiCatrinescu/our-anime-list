@@ -29,8 +29,16 @@ fn delete_banner(title: String, repo: RepoLock<'_>) {
 }
 
 #[tauri::command]
-fn search_banners(query: String, repo: RepoLock<'_>) -> Vec<Banner> {
-    repo.read().unwrap().search_banners(query)
+#[allow(non_snake_case)]
+fn search_banners(
+    query: String,
+    pageSize: usize,
+    pageCount: usize,
+    repo: RepoLock<'_>,
+) -> Vec<Banner> {
+    repo.read()
+        .unwrap()
+        .search_banners(query, pageSize, pageCount)
 }
 
 #[tauri::command]

@@ -9,15 +9,24 @@ export interface Banner {
     total_episodes: number;
 }
 
+export const pageSize = 20;
+
 export class BannerLocalMemory {
     private banners: Banner[] = [];
     private changes: { method: string; data: any }[] = [];
+    public t: string = "local";
 
     async addBanner(banner: Banner) {
-        // Prevent adding duplicates by title
+        const initialLength = this.banners.length;
         const exists = this.banners.find(b => b.title === banner.title);
         if (!exists) {
             this.banners.push(banner);
+        }
+        if (this.banners.length > initialLength) {
+            this.changes.push({
+                method: "add_banner",
+                data: { banner }
+            });
         }
     }
 
@@ -33,14 +42,15 @@ export class BannerLocalMemory {
     }
 
     async getPagedBanners(pageCount: number): Promise<Banner[]> {
-        const pageSize = 20; // default page size
         const start = pageCount * pageSize;
         return this.banners.slice(start, start + pageSize);
     }
 
-    async searchBanners(query: string): Promise<Banner[]> {
+    async searchBanners(query: string, pageCount: number): Promise<Banner[]> {
+        const start = pageCount * pageSize;
+        const end = start + pageSize
         const lowerQuery = query.toLowerCase();
-        return this.banners.filter(b => b.title.toLowerCase().includes(lowerQuery));
+        return this.banners.filter(b => b.title.toLowerCase().includes(lowerQuery)).slice(start, end);
     }
 
     async getAllBanners(): Promise<Banner[]> {
@@ -101,6 +111,7 @@ export class BannerLocalMemory {
 }
 
 export class BannerService {
+    public t: string = "back";
     async addBanner(banner: Banner) {
         await invoke ("add_banner", { banner });
     }
@@ -110,11 +121,11 @@ export class BannerService {
     }
 
     async getPagedBanners(pageCount: number): Promise<Banner[]> {
-        return await invoke("get_paged_banners", {pageSize: 20, pageCount: pageCount})
+        return await invoke("get_paged_banners", {pageSize, pageCount})
     }
 
-    async searchBanners(query: string): Promise<Banner[]> {
-        return await invoke("search_banners", { query })
+    async searchBanners(query: string, pageCount: number): Promise<Banner[]> {
+        return await invoke("search_banners", { query, pageSize, pageCount })
     }
 
     //! deprecated use getPagedBanners

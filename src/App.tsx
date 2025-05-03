@@ -1,23 +1,17 @@
 import "./App.css";
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import InfoBanner from "./components/InfoBanner";
 import {
   BannerService,
   Banner,
   BannerLocalMemory,
+  pageSize,
 } from "./services/bannerService";
 import "bootstrap/dist/css/bootstrap.min.css";
-
-const DAYS_OF_WEEK = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+import HomeView from "./components/HomeView";
+import ViewView from "./components/ViewView";
+import ModifyView from "./components/ModifyView";
+import AddView from "./components/AddView";
 
 type View = "home" | "add" | "view" | "modify";
 
@@ -54,7 +48,7 @@ function useNetworkStatus() {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 10000); // poll every 10s
+    const interval = setInterval(checkStatus, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -87,21 +81,15 @@ function App() {
     setHasMore(true);
   };
 
-  // TODO
   useEffect(() => {
     if (isOnline) {
       const remoteService = new BannerService();
-      console.log("online");
-
       if (bannerServiceRef.current instanceof BannerLocalMemory) {
         const change_log = bannerServiceRef.current.getChangeLog();
-        console.log(change_log);
         remoteService.syncServer(change_log);
       }
-
       bannerServiceRef.current = remoteService;
     } else {
-      console.log("offline");
       const localService = new BannerLocalMemory();
       if (bannerServiceRef.current instanceof BannerService) {
         localService.cacheBanners(banners);
@@ -119,32 +107,40 @@ function App() {
       }
     } else {
       resetBanners();
-      console.log("reset");
     }
   }, [isBottom, currentView]);
+
+  const reloadBanners = async (bannerCount: number) => {
+    const updatedPageCount = Math.ceil(bannerCount / pageSize);
+    setPageCount(updatedPageCount);
+    setBanners([]);
+    for (let i = 0; i < updatedPageCount; i++) {
+      const newBanners = await bannerServiceRef.current.getPagedBanners(i);
+      setBanners((prev) => [...prev, ...newBanners]);
+    }
+  };
 
   const loadBanners = async () => {
     if (isLoading || !hasMore) return;
     setIsLoading(true);
 
+    let newBanners: Banner[];
+
     if (searchText.trim() === "") {
-      const newBanners = await bannerServiceRef.current.getPagedBanners(
+      newBanners = await bannerServiceRef.current.getPagedBanners(pageCount);
+    } else {
+      newBanners = await bannerServiceRef.current.searchBanners(
+        searchText,
         pageCount
       );
-
-      if (newBanners.length === 0) {
-        setHasMore(false); // no more data
-      } else {
-        setPageCount(pageCount + 1);
-        console.log(pageCount);
-        setBanners((prev) => [...prev, ...newBanners]);
-      }
-    } else {
-      const results = await bannerServiceRef.current.searchBanners(searchText);
-      setBanners(results);
-      setHasMore(false); // disable infinite scroll on search
     }
 
+    if (newBanners.length === 0) {
+      setHasMore(false);
+    } else {
+      setPageCount(pageCount + 1);
+      setBanners((prev) => [...prev, ...newBanners]);
+    }
     setIsLoading(false);
   };
 
@@ -197,20 +193,18 @@ function App() {
     }
     resetBanners();
     loadBanners();
-    console.log("search");
+    // console.log("search");
   }, [searchText]);
 
   const handleViewChange = (newView: View) => {
     setCurrentView(newView);
-    if (newView === "view" || newView === "modify") {
-      // loadBanners();
-    }
   };
 
   const handleDeleteBanner = (banner: Banner) => {
     if (window.confirm("Are you sure you want to delete this banner?")) {
       bannerServiceRef.current.deleteBanner(banner.title);
       // loadBanners();
+      reloadBanners(banners.length - 1);
     }
   };
 
@@ -244,286 +238,323 @@ function App() {
     setBanners(new_banners);
   };
 
-  const renderHomeView = () => (
-    <div
-      className="d-flex flex-column gap-3 align-items-center justify-content-center"
-      style={{ minHeight: "80vh" }}
-    >
-      <button
-        onClick={() => handleViewChange("add")}
-        className="btn btn-primary btn-lg w-50"
-      >
-        Add New Banner
-      </button>
-      <button
-        onClick={() => handleViewChange("view")}
-        className="btn btn-info btn-lg w-50"
-      >
-        View All Banners
-      </button>
-      <button
-        onClick={() => handleViewChange("modify")}
-        className="btn btn-warning btn-lg w-50"
-      >
-        Modify Banners
-      </button>
-    </div>
-  );
+  // const renderHomeView = () => (
+  //   <div
+  //     className="d-flex flex-column gap-3 align-items-center justify-content-center"
+  //     style={{ minHeight: "80vh" }}
+  //   >
+  //     <button
+  //       onClick={() => handleViewChange("add")}
+  //       className="btn btn-primary btn-lg w-50"
+  //     >
+  //       Add New Banner
+  //     </button>
+  //     <button
+  //       onClick={() => handleViewChange("view")}
+  //       className="btn btn-info btn-lg w-50"
+  //     >
+  //       View All Banners
+  //     </button>
+  //     <button
+  //       onClick={() => handleViewChange("modify")}
+  //       className="btn btn-warning btn-lg w-50"
+  //     >
+  //       Modify Banners
+  //     </button>
+  //   </div>
+  // );
 
-  const renderAddView = () => (
-    <div className="container">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Add New Banner</h2>
-        <button
-          onClick={() => handleViewChange("home")}
-          className="btn btn-secondary"
-        >
-          Back to Home
-        </button>
-      </div>
-      <div className="d-flex flex-column gap-3">
-        <div className="mb-3">
-          <label className="form-label">Title</label>
-          <input
-            type="text"
-            placeholder="Enter title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="form-control"
-          />
-        </div>
-        <div className="mb-3">
-          <label className="form-label">Release Day</label>
-          <select
-            value={releaseDay}
-            onChange={(e) => setReleaseDay(e.target.value)}
-            className="form-select"
-          >
-            <option value="">Select a day</option>
-            {DAYS_OF_WEEK.map((day) => (
-              <option key={day} value={day}>
-                {day}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="mb-3">
-          <label className="form-label">Release Time</label>
-          <input
-            type="time"
-            value={releaseTime}
-            onChange={(e) => setReleaseTime(e.target.value)}
-            className="form-control"
-          />
-        </div>
-        <div className="row">
-          <div className="col">
-            <div className="mb-3">
-              <label className="form-label">Current Episodes</label>
-              <input
-                type="number"
-                value={currentEpisodes}
-                onChange={(e) => setCurrentEpisodes(Number(e.target.value))}
-                className="form-control"
-                min="0"
-              />
-            </div>
-          </div>
-          <div className="col">
-            <div className="mb-3">
-              <label className="form-label">Total Episodes</label>
-              <input
-                type="number"
-                value={totalEpisodes}
-                onChange={(e) => setTotalEpisodes(Number(e.target.value))}
-                className="form-control"
-                min="0"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="mb-3">
-          <label className="form-label">Banner Image</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              if (e.target.files) setBannerImage(e.target.files[0]);
-            }}
-            className="form-control"
-          />
-        </div>
-        <button onClick={handleAddBanner} className="btn btn-primary">
-          Add Banner
-        </button>
-      </div>
-    </div>
-  );
+  // const renderAddView = () => (
+  //   <div className="container">
+  //     <div className="d-flex justify-content-between align-items-center mb-4">
+  //       <h2>Add New Banner</h2>
+  //       <button
+  //         onClick={() => handleViewChange("home")}
+  //         className="btn btn-secondary"
+  //       >
+  //         Back to Home
+  //       </button>
+  //     </div>
+  //     <div className="d-flex flex-column gap-3">
+  //       <div className="mb-3">
+  //         <label className="form-label">Title</label>
+  //         <input
+  //           type="text"
+  //           placeholder="Enter title"
+  //           value={title}
+  //           onChange={(e) => setTitle(e.target.value)}
+  //           className="form-control"
+  //         />
+  //       </div>
+  //       <div className="mb-3">
+  //         <label className="form-label">Release Day</label>
+  //         <select
+  //           value={releaseDay}
+  //           onChange={(e) => setReleaseDay(e.target.value)}
+  //           className="form-select"
+  //         >
+  //           <option value="">Select a day</option>
+  //           {DAYS_OF_WEEK.map((day) => (
+  //             <option key={day} value={day}>
+  //               {day}
+  //             </option>
+  //           ))}
+  //         </select>
+  //       </div>
+  //       <div className="mb-3">
+  //         <label className="form-label">Release Time</label>
+  //         <input
+  //           type="time"
+  //           value={releaseTime}
+  //           onChange={(e) => setReleaseTime(e.target.value)}
+  //           className="form-control"
+  //         />
+  //       </div>
+  //       <div className="row">
+  //         <div className="col">
+  //           <div className="mb-3">
+  //             <label className="form-label">Current Episodes</label>
+  //             <input
+  //               type="number"
+  //               value={currentEpisodes}
+  //               onChange={(e) => setCurrentEpisodes(Number(e.target.value))}
+  //               className="form-control"
+  //               min="0"
+  //             />
+  //           </div>
+  //         </div>
+  //         <div className="col">
+  //           <div className="mb-3">
+  //             <label className="form-label">Total Episodes</label>
+  //             <input
+  //               type="number"
+  //               value={totalEpisodes}
+  //               onChange={(e) => setTotalEpisodes(Number(e.target.value))}
+  //               className="form-control"
+  //               min="0"
+  //             />
+  //           </div>
+  //         </div>
+  //       </div>
+  //       <div className="mb-3">
+  //         <label className="form-label">Banner Image</label>
+  //         <input
+  //           type="file"
+  //           accept="image/*"
+  //           onChange={(e) => {
+  //             if (e.target.files) setBannerImage(e.target.files[0]);
+  //           }}
+  //           className="form-control"
+  //         />
+  //       </div>
+  //       <button onClick={handleAddBanner} className="btn btn-primary">
+  //         Add Banner
+  //       </button>
+  //     </div>
+  //   </div>
+  // );
 
-  const renderViewView = () => (
-    <div className="container">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>All Banners</h2>
-        <button
-          onClick={() => handleViewChange("home")}
-          className="btn btn-secondary"
-        >
-          Back to Home
-        </button>
-      </div>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by title"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          className="form-control"
-        />
-      </div>
-      <div className="row row-cols-auto g-2">
-        {banners.map((banner, index) => (
-          <div key={index} className="col px-2">
-            <InfoBanner
-              imageFile={
-                new Blob([new Uint8Array(banner.image_binary)], {
-                  type: "image/png",
-                })
-              }
-              title={banner.title}
-              releaseDay={banner.release_day}
-              releaseTime={banner.release_time}
-              currentEpisodes={banner.current_episodes}
-              totalEpisodes={banner.total_episodes}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  // const renderViewView = () => (
+  //   <div className="container">
+  //     <div className="d-flex justify-content-between align-items-center mb-4">
+  //       <h2>All Banners</h2>
+  //       <button
+  //         onClick={() => handleViewChange("home")}
+  //         className="btn btn-secondary"
+  //       >
+  //         Back to Home
+  //       </button>
+  //     </div>
+  //     <div className="mb-4">
+  //       <input
+  //         type="text"
+  //         placeholder="Search by title"
+  //         value={searchText}
+  //         onChange={(e) => setSearchText(e.target.value)}
+  //         className="form-control"
+  //       />
+  //     </div>
+  //     <div className="row row-cols-auto g-2">
+  //       {banners.map((banner, index) => (
+  //         <div key={index} className="col px-2">
+  //           <InfoBanner
+  //             imageFile={
+  //               new Blob([new Uint8Array(banner.image_binary)], {
+  //                 type: "image/png",
+  //               })
+  //             }
+  //             title={banner.title}
+  //             releaseDay={banner.release_day}
+  //             releaseTime={banner.release_time}
+  //             currentEpisodes={banner.current_episodes}
+  //             totalEpisodes={banner.total_episodes}
+  //           />
+  //         </div>
+  //       ))}
+  //     </div>
+  //   </div>
+  // );
 
-  const renderModifyView = () => (
-    <div className="container">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Modify Banners</h2>
-        <button
-          onClick={() => handleViewChange("home")}
-          className="btn btn-secondary"
-        >
-          Back to Home
-        </button>
-      </div>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by title"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          className="form-control"
-        />
-      </div>
-      <div className="d-flex flex-column gap-4">
-        {banners.map((banner) => (
-          <div key={banner.title} className="card">
-            <div className="card-body bg-secondary">
-              <div className="row">
-                <div className="col-md-6">
-                  <InfoBanner
-                    imageFile={
-                      new Blob([new Uint8Array(banner.image_binary)], {
-                        type: "image/png",
-                      })
-                    }
-                    title={banner.title}
-                    releaseDay={banner.release_day}
-                    releaseTime={banner.release_time}
-                    currentEpisodes={banner.current_episodes}
-                    totalEpisodes={banner.total_episodes}
-                  />
-                </div>
-                <div className="col-md-6">
-                  <div className="d-flex flex-column gap-2">
-                    <div className="mb-3">
-                      <label className="form-label">Current Episodes</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-control"
-                        value={banner.current_episodes}
-                        onChange={(e) =>
-                          handleUpdateCurrentEpisodes(
-                            banner.title,
-                            parseInt(e.target.value)
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <label className="form-label">Total Episodes</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-control"
-                        value={banner.total_episodes}
-                        onChange={(e) =>
-                          handleUpdateTotalEpisodes(
-                            banner.title,
-                            parseInt(e.target.value)
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <label className="form-label">Release Day</label>
-                      <select
-                        className="form-select"
-                        value={banner.release_day}
-                        onChange={(e) =>
-                          handleUpdateReleaseDay(banner.title, e.target.value)
-                        }
-                      >
-                        {DAYS_OF_WEEK.map((day) => (
-                          <option key={day} value={day}>
-                            {day}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="mb-3">
-                      <label className="form-label">Release Time</label>
-                      <input
-                        type="time"
-                        className="form-control"
-                        value={banner.release_time}
-                        onChange={(e) =>
-                          handleUpdateReleaseTime(banner.title, e.target.value)
-                        }
-                      />
-                    </div>
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => handleDeleteBanner(banner)}
-                    >
-                      Delete Banner
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  // const renderModifyView = () => (
+  //   <div className="container">
+  //     <div className="d-flex justify-content-between align-items-center mb-4">
+  //       <h2>Modify Banners</h2>
+  //       <button
+  //         onClick={() => handleViewChange("home")}
+  //         className="btn btn-secondary"
+  //       >
+  //         Back to Home
+  //       </button>
+  //     </div>
+  //     <div className="mb-4">
+  //       <input
+  //         type="text"
+  //         placeholder="Search by title"
+  //         value={searchText}
+  //         onChange={(e) => setSearchText(e.target.value)}
+  //         className="form-control"
+  //       />
+  //     </div>
+  //     <div className="d-flex flex-column gap-4">
+  //       {banners.map((banner) => (
+  //         <div key={banner.title} className="card">
+  //           <div className="card-body bg-secondary">
+  //             <div className="row">
+  //               <div className="col-md-6">
+  //                 <InfoBanner
+  //                   imageFile={
+  //                     new Blob([new Uint8Array(banner.image_binary)], {
+  //                       type: "image/png",
+  //                     })
+  //                   }
+  //                   title={banner.title}
+  //                   releaseDay={banner.release_day}
+  //                   releaseTime={banner.release_time}
+  //                   currentEpisodes={banner.current_episodes}
+  //                   totalEpisodes={banner.total_episodes}
+  //                 />
+  //               </div>
+  //               <div className="col-md-6">
+  //                 <div className="d-flex flex-column gap-2">
+  //                   <div className="mb-3">
+  //                     <label className="form-label">Current Episodes</label>
+  //                     <input
+  //                       type="number"
+  //                       min="0"
+  //                       className="form-control"
+  //                       value={banner.current_episodes}
+  //                       onChange={(e) =>
+  //                         handleUpdateCurrentEpisodes(
+  //                           banner.title,
+  //                           parseInt(e.target.value)
+  //                         )
+  //                       }
+  //                     />
+  //                   </div>
+  //                   <div className="mb-3">
+  //                     <label className="form-label">Total Episodes</label>
+  //                     <input
+  //                       type="number"
+  //                       min="0"
+  //                       className="form-control"
+  //                       value={banner.total_episodes}
+  //                       onChange={(e) =>
+  //                         handleUpdateTotalEpisodes(
+  //                           banner.title,
+  //                           parseInt(e.target.value)
+  //                         )
+  //                       }
+  //                     />
+  //                   </div>
+  //                   <div className="mb-3">
+  //                     <label className="form-label">Release Day</label>
+  //                     <select
+  //                       className="form-select"
+  //                       value={banner.release_day}
+  //                       onChange={(e) =>
+  //                         handleUpdateReleaseDay(banner.title, e.target.value)
+  //                       }
+  //                     >
+  //                       {DAYS_OF_WEEK.map((day) => (
+  //                         <option key={day} value={day}>
+  //                           {day}
+  //                         </option>
+  //                       ))}
+  //                     </select>
+  //                   </div>
+  //                   <div className="mb-3">
+  //                     <label className="form-label">Release Time</label>
+  //                     <input
+  //                       type="time"
+  //                       className="form-control"
+  //                       value={banner.release_time}
+  //                       onChange={(e) =>
+  //                         handleUpdateReleaseTime(banner.title, e.target.value)
+  //                       }
+  //                     />
+  //                   </div>
+  //                   <button
+  //                     className="btn btn-danger"
+  //                     onClick={() => handleDeleteBanner(banner)}
+  //                   >
+  //                     Delete Banner
+  //                   </button>
+  //                 </div>
+  //               </div>
+  //             </div>
+  //           </div>
+  //         </div>
+  //       ))}
+  //     </div>
+  //   </div>
+  // );
 
   return (
     <div className="container py-4">
       <h1 className="text-center mb-4">
         Track Anime {isOnline ? "" : "(Offline Mode)"}
       </h1>
-      {currentView === "home" && renderHomeView()}
-      {currentView === "add" && renderAddView()}
-      {currentView === "view" && renderViewView()}
-      {currentView === "modify" && renderModifyView()}
+      {currentView === "home" && (
+        <HomeView handleViewChange={handleViewChange}></HomeView>
+      )}
+      {currentView === "add" && (
+        <AddView
+          title={title}
+          releaseDay={releaseDay}
+          releaseTime={releaseTime}
+          currentEpisodes={currentEpisodes}
+          totalEpisodes={totalEpisodes}
+          handleViewChange={handleViewChange}
+          setTitle={setTitle}
+          setReleaseDay={setReleaseDay}
+          setReleaseTime={setReleaseTime}
+          setCurrentEpisodes={setCurrentEpisodes}
+          setTotalEpisodes={setTotalEpisodes}
+          handleAddBanner={handleAddBanner}
+          setBannerImage={setBannerImage}
+        ></AddView>
+      )}
+      {currentView === "view" && (
+        <ViewView
+          handleViewChange={handleViewChange}
+          searchText={searchText}
+          banners={banners}
+          searchTextChange={setSearchText}
+        ></ViewView>
+      )}
+      {currentView === "modify" && (
+        <ModifyView
+          handleUpdateTotalEpisodes={handleUpdateTotalEpisodes}
+          searchTextChange={setSearchText}
+          handleViewChange={handleViewChange}
+          handleDeleteBanner={handleDeleteBanner}
+          searchText={searchText}
+          banners={banners}
+          handleUpdateCurrentEpisodes={handleUpdateCurrentEpisodes}
+          handleUpdateReleaseDay={handleUpdateReleaseDay}
+          handleUpdateReleaseTime={handleUpdateReleaseTime}
+        ></ModifyView>
+      )}
     </div>
   );
 }
