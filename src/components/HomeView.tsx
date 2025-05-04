@@ -1,4 +1,4 @@
-type View = "home" | "add" | "view" | "modify";
+import View from "./ViewType";
 
 interface Props {
   handleViewChange: (item: View) => void;

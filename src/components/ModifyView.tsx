@@ -1,7 +1,6 @@
 import { Banner } from "../services/bannerService";
 import InfoBanner from "./InfoBanner";
-
-type View = "home" | "add" | "view" | "modify";
+import View from "./ViewType";
 
 const DAYS_OF_WEEK = [
   "Monday",

@@ -1,7 +1,7 @@
 use banner::Banner;
-use banner_repo::BannerRepo;
-use sqlx::{migrate::MigrateDatabase, Error, Sqlite, SqlitePool};
-use std::{env, fs, path::Path};
+use banner_repo::{BannerRepo, LoginResult};
+use sqlx::{migrate::MigrateDatabase, sqlite::SqliteConnectOptions, Error, Sqlite, SqlitePool};
+use std::{env, fs, path::Path, str::FromStr};
 use tokio::sync::RwLock;
 
 pub mod banner;
@@ -11,17 +11,32 @@ type RepoLock<'a> = tauri::State<'a, RwLock<BannerRepo>>;
 
 const DB_DIR_NAME: &str = "database";
 
-const BANNER_TABLE_QUERY: &str = r#"
+const DB_INIT: &str = r#"
+        CREATE TABLE IF NOT EXISTS Users (
+            user_type INTEGER NOT NULL,
+            password TEXT NOT NULL,
+            user_name TEXT PRIMARY KEY
+        );
+
         CREATE TABLE IF NOT EXISTS Banners (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
             image_binary BLOB NOT NULL,
-            title TEXT NOT NULL,
+            title TEXT,
             release_day TEXT NOT NULL,
             release_time TEXT NOT NULL,
             current_episodes INTEGER NOT NULL,
-            total_episodes INTEGER NOT NULL
-        )
+            total_episodes INTEGER NOT NULL,
+            user_name TEXT REFERENCES Users(user_name),
+            PRIMARY KEY (user_name, title)
+        );
         "#;
+
+const ADMIN_INSERT: &str = r#"
+        INSERT INTO Users (
+                user_type,
+                password,
+                user_name
+                ) VALUES (0, 'adminpassword', 'admin');
+"#;
 
 const PATH_TO_DATABASE: &str = "C:\\Users\\x8hnc\\Desktop\\mpp_labs";
 fn get_db_creation_path() -> Result<String, std::io::Error> {
@@ -52,16 +67,50 @@ fn set_up_db_directory() -> Result<(), std::io::Error> {
 
 pub async fn set_up_database() -> Result<sqlx::Pool<Sqlite>, Error> {
     let db_url = get_db_creation_path().map_err(sqlx::Error::Io)?;
+    let mut db_existed = true;
 
     if !Sqlite::database_exists(&db_url).await.unwrap_or(false) {
         set_up_db_directory().map_err(sqlx::Error::Io)?;
         Sqlite::create_database(&db_url).await?;
+        db_existed = false;
     }
 
-    let db: sqlx::Pool<Sqlite> = SqlitePool::connect(&db_url).await.unwrap();
-    sqlx::query(BANNER_TABLE_QUERY).execute(&db).await.unwrap();
+    let options = SqliteConnectOptions::from_str(&db_url)?
+        .create_if_missing(true)
+        .pragma("foreign_keys", "ON");
+
+    let db: sqlx::Pool<Sqlite> = SqlitePool::connect_with(options).await?;
+    sqlx::query(DB_INIT).execute(&db).await?;
+
+    if !db_existed {
+        sqlx::query(ADMIN_INSERT).execute(&db).await?;
+    }
 
     Ok(db)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn login(
+    userName: String,
+    password: String,
+    repo: RepoLock<'_>,
+) -> Result<LoginResult, String> {
+    repo.read().await.login(userName, password).await
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn register_user(
+    userName: String,
+    password: String,
+    isAdmin: bool,
+    repo: RepoLock<'_>,
+) -> Result<bool, String> {
+    repo.write()
+        .await
+        .register_user(userName, password, isAdmin)
+        .await
 }
 
 #[tauri::command]
@@ -80,9 +129,8 @@ async fn add_banner(banner: Banner, repo: RepoLock<'_>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn delete_banner(title: String, repo: RepoLock<'_>) -> Result<(), ()> {
-    repo.write().await.delete_banner(title).await;
-    Ok(())
+async fn delete_banner(title: String, repo: RepoLock<'_>) -> Result<(), String> {
+    repo.write().await.delete_banner(title).await
 }
 
 #[tauri::command]
@@ -92,12 +140,11 @@ async fn search_banners(
     pageSize: usize,
     pageCount: usize,
     repo: RepoLock<'_>,
-) -> Result<Vec<Banner>, ()> {
-    Ok(repo
-        .read()
+) -> Result<Vec<Banner>, String> {
+    repo.read()
         .await
         .search_banners(query, pageSize, pageCount)
-        .await)
+        .await
 }
 
 #[tauri::command]
@@ -106,17 +153,16 @@ async fn get_sorted_banners_release_day(
     pageSize: usize,
     pageCount: usize,
     repo: RepoLock<'_>,
-) -> Result<Vec<Banner>, ()> {
-    Ok(repo
-        .read()
+) -> Result<Vec<Banner>, String> {
+    repo.read()
         .await
         .sort_banners_by_release_day(pageSize, pageCount)
-        .await)
+        .await
 }
 
 #[tauri::command]
-async fn get_all_banners(repo: RepoLock<'_>) -> Result<Vec<Banner>, ()> {
-    Ok(repo.read().await.get_all_banners().await)
+async fn get_all_banners(repo: RepoLock<'_>) -> Result<Vec<Banner>, String> {
+    repo.read().await.get_all_banners().await
 }
 
 #[tauri::command]
@@ -125,12 +171,11 @@ async fn update_banner_current_episodes(
     title: String,
     currentEpisodes: u32,
     repo: RepoLock<'_>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
     repo.write()
         .await
         .update_banner_current_episodes(title, currentEpisodes)
-        .await;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -139,12 +184,11 @@ async fn update_banner_total_episodes(
     title: String,
     totalEpisodes: u32,
     repo: RepoLock<'_>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
     repo.write()
         .await
         .update_banner_total_episodes(title, totalEpisodes)
-        .await;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -153,12 +197,11 @@ async fn update_banner_release_day(
     title: String,
     releaseDay: String,
     repo: RepoLock<'_>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
     repo.write()
         .await
         .update_banner_release_day(title, releaseDay)
-        .await;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -167,12 +210,11 @@ async fn update_banner_release_time(
     title: String,
     releaseTime: String,
     repo: RepoLock<'_>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
     repo.write()
         .await
         .update_banner_release_time(title, releaseTime)
-        .await;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -181,12 +223,11 @@ async fn get_paged_banners(
     pageSize: usize,
     pageCount: usize,
     repo: RepoLock<'_>,
-) -> Result<Vec<Banner>, ()> {
-    Ok(repo
-        .read()
+) -> Result<Vec<Banner>, String> {
+    repo.read()
         .await
         .get_paged_banners(pageSize, pageCount)
-        .await)
+        .await
 }
 
 pub fn run_app(db: sqlx::Pool<Sqlite>) {
@@ -204,7 +245,9 @@ pub fn run_app(db: sqlx::Pool<Sqlite>) {
             update_banner_release_time,
             get_sorted_banners_release_day,
             get_paged_banners,
-            check_network
+            check_network,
+            register_user,
+            login
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

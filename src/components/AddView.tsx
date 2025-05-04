@@ -1,4 +1,4 @@
-type View = "home" | "add" | "view" | "modify";
+import View from "./ViewType";
 
 const DAYS_OF_WEEK = [
   "Monday",

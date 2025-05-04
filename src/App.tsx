@@ -12,8 +12,8 @@ import HomeView from "./components/HomeView";
 import ViewView from "./components/ViewView";
 import ModifyView from "./components/ModifyView";
 import AddView from "./components/AddView";
-
-type View = "home" | "add" | "view" | "modify";
+import View from "./components/ViewType";
+import LoginScreen from "./components/LoginView";
 
 function useHasScrolledToBottom(): boolean {
   const [isBottom, setIsBottom] = useState(false);
@@ -56,7 +56,7 @@ function useNetworkStatus() {
 }
 
 function App() {
-  const [currentView, setCurrentView] = useState<View>("home");
+  const [currentView, setCurrentView] = useState<View>("login");
   const [banners, setBanners] = useState<Banner[]>([]);
   const [title, setTitle] = useState("");
   const [releaseDay, setReleaseDay] = useState("");
@@ -73,6 +73,8 @@ function App() {
   const bannerServiceRef = useRef<BannerService | BannerLocalMemory>(
     isOnline ? new BannerService() : new BannerLocalMemory()
   );
+  const [userName, setUserName] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
 
   const resetBanners = async () => {
     if (bannerServiceRef.current instanceof BannerLocalMemory) return;
@@ -241,6 +243,16 @@ function App() {
   const handleSearch = (e: React.SetStateAction<string>) => {
     setPageCount(0);
     setSearchText(e);
+  };
+
+  const handleLogin = async () => {
+    const result = await bannerServiceRef.current.login(userName, password);
+    if (result == 0 || result == 1) handleViewChange("home");
+  };
+
+  const handleRegister = async () => {
+    const result = await bannerServiceRef.current.register(userName, password);
+    if (!result) console.error("user already exists");
   };
 
   // const renderHomeView = () => (
@@ -519,6 +531,16 @@ function App() {
       <h1 className="text-center mb-4">
         Track Anime {isOnline ? "" : "(Offline Mode)"}
       </h1>
+      {currentView === "login" && (
+        <LoginScreen
+          userName={userName}
+          password={password}
+          passwordChange={setPassword}
+          userNameChange={setUserName}
+          handleLogin={handleLogin}
+          handleRegister={handleRegister}
+        ></LoginScreen>
+      )}
       {currentView === "home" && (
         <HomeView handleViewChange={handleViewChange}></HomeView>
       )}

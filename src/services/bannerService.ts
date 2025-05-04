@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import LoginResult from "../components/LoginResult";
 
 export interface Banner {
     image_binary: number[];
@@ -15,6 +16,14 @@ export class BannerLocalMemory {
     private banners: Banner[] = [];
     private changes: { method: string; data: any }[] = [];
     public t: string = "local";
+
+    async login(_userName: string, _password: string): Promise<number> {
+        return -1;
+    }
+
+    async register(_userName: string, _password: string): Promise<boolean> {
+        return false;
+    }
 
     async addBanner(banner: Banner) {
         const initialLength = this.banners.length;
@@ -112,6 +121,23 @@ export class BannerLocalMemory {
 
 export class BannerService {
     public t: string = "back";
+    async login(userName: string, password: string): Promise<number> {
+        const result = await invoke<LoginResult> ("login", {userName, password});
+        switch (result.status) {
+            case 'Admin':
+                return 0;
+            case 'User':
+                return 1;
+            case 'Fail':
+              console.error(result.error);
+              return -1;
+          }
+    }
+
+    async register(userName: string, password: string): Promise<boolean> {
+        return await invoke("register_user", { userName, password, isAdmin: false});
+    }
+
     async addBanner(banner: Banner) {
         await invoke ("add_banner", { banner });
     }
@@ -128,7 +154,6 @@ export class BannerService {
         return await invoke("search_banners", { query, pageSize, pageCount })
     }
 
-    //! deprecated use getPagedBanners
     async getAllBanners(): Promise<Banner[]> {
         return await invoke("get_all_banners");
     }
