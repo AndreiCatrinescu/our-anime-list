@@ -1,13 +1,15 @@
 use banner::Banner;
 use banner_repo::{BannerRepo, LoginResult};
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteConnectOptions, Error, Sqlite, SqlitePool};
+use std::collections::HashMap;
 use std::{env, fs, path::Path, str::FromStr};
-use tokio::sync::RwLock;
+use std::{thread, vec};
+use tauri::Emitter;
 
 pub mod banner;
 pub mod banner_repo;
 
-type RepoLock<'a> = tauri::State<'a, RwLock<BannerRepo>>;
+type RepoLock<'a> = tauri::State<'a, BannerRepo>;
 
 const DB_DIR_NAME: &str = "database";
 
@@ -28,6 +30,18 @@ const DB_INIT: &str = r#"
             user_name TEXT REFERENCES Users(user_name),
             PRIMARY KEY (user_name, title)
         );
+
+        CREATE TABLE IF NOT EXISTS Logs (
+            user_name TEXT REFERENCES Users(user_name),
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS SuspiciousUsers (
+            user_name TEXT REFERENCES Users(user_name),
+            PRIMARY KEY (user_name)
+        );
         "#;
 
 const ADMIN_INSERT: &str = r#"
@@ -35,8 +49,18 @@ const ADMIN_INSERT: &str = r#"
                 user_type,
                 password,
                 user_name
-                ) VALUES (0, 'adminpassword', 'admin');
+        ) VALUES (0, 'adminpassword', 'admin');
+
+        INSERT INTO Users (
+            user_type,
+            password,
+            user_name
+        ) VALUES (1, 'pass', 'bobross');
 "#;
+
+const MONITOR_INTERVAL: u64 = 10;
+
+const SUS_ACTION_COUNT: usize = 10;
 
 const PATH_TO_DATABASE: &str = "C:\\Users\\x8hnc\\Desktop\\mpp_labs";
 fn get_db_creation_path() -> Result<String, std::io::Error> {
@@ -91,12 +115,30 @@ pub async fn set_up_database() -> Result<sqlx::Pool<Sqlite>, Error> {
 
 #[tauri::command]
 #[allow(non_snake_case)]
+async fn simulate_attack(userName: String, repo: RepoLock<'_>) -> Result<(), String> {
+    for i in 0..100 {
+        let banner = Banner {
+            image_binary: vec![],
+            title: i.to_string(),
+            release_day: String::from("Monday"),
+            release_time: String::from("10:00"),
+            current_episodes: 1,
+            total_episodes: 10,
+        };
+        repo.add_banner(banner, userName.clone()).await?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
 async fn login(
     userName: String,
     password: String,
     repo: RepoLock<'_>,
 ) -> Result<LoginResult, String> {
-    repo.read().await.login(userName, password).await
+    repo.login(userName, password).await
 }
 
 #[tauri::command]
@@ -107,10 +149,7 @@ async fn register_user(
     isAdmin: bool,
     repo: RepoLock<'_>,
 ) -> Result<bool, String> {
-    repo.write()
-        .await
-        .register_user(userName, password, isAdmin)
-        .await
+    repo.register_user(userName, password, isAdmin).await
 }
 
 #[tauri::command]
@@ -124,13 +163,15 @@ fn check_network() -> bool {
 }
 
 #[tauri::command]
-async fn add_banner(banner: Banner, repo: RepoLock<'_>) -> Result<(), String> {
-    repo.write().await.add_banner(banner).await
+#[allow(non_snake_case)]
+async fn add_banner(banner: Banner, userName: String, repo: RepoLock<'_>) -> Result<(), String> {
+    repo.add_banner(banner, userName).await
 }
 
 #[tauri::command]
-async fn delete_banner(title: String, repo: RepoLock<'_>) -> Result<(), String> {
-    repo.write().await.delete_banner(title).await
+#[allow(non_snake_case)]
+async fn delete_banner(title: String, userName: String, repo: RepoLock<'_>) -> Result<(), String> {
+    repo.delete_banner(title, userName).await
 }
 
 #[tauri::command]
@@ -139,11 +180,10 @@ async fn search_banners(
     query: String,
     pageSize: usize,
     pageCount: usize,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<Vec<Banner>, String> {
-    repo.read()
-        .await
-        .search_banners(query, pageSize, pageCount)
+    repo.search_banners(query, pageSize, pageCount, userName)
         .await
 }
 
@@ -152,17 +192,17 @@ async fn search_banners(
 async fn get_sorted_banners_release_day(
     pageSize: usize,
     pageCount: usize,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<Vec<Banner>, String> {
-    repo.read()
-        .await
-        .sort_banners_by_release_day(pageSize, pageCount)
+    repo.sort_banners_by_release_day(pageSize, pageCount, userName)
         .await
 }
 
 #[tauri::command]
-async fn get_all_banners(repo: RepoLock<'_>) -> Result<Vec<Banner>, String> {
-    repo.read().await.get_all_banners().await
+#[allow(non_snake_case)]
+async fn get_all_banners(userName: String, repo: RepoLock<'_>) -> Result<Vec<Banner>, String> {
+    repo.get_all_banners(userName).await
 }
 
 #[tauri::command]
@@ -170,11 +210,10 @@ async fn get_all_banners(repo: RepoLock<'_>) -> Result<Vec<Banner>, String> {
 async fn update_banner_current_episodes(
     title: String,
     currentEpisodes: u32,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<(), String> {
-    repo.write()
-        .await
-        .update_banner_current_episodes(title, currentEpisodes)
+    repo.update_banner_current_episodes(title, currentEpisodes, userName)
         .await
 }
 
@@ -183,11 +222,10 @@ async fn update_banner_current_episodes(
 async fn update_banner_total_episodes(
     title: String,
     totalEpisodes: u32,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<(), String> {
-    repo.write()
-        .await
-        .update_banner_total_episodes(title, totalEpisodes)
+    repo.update_banner_total_episodes(title, totalEpisodes, userName)
         .await
 }
 
@@ -196,11 +234,10 @@ async fn update_banner_total_episodes(
 async fn update_banner_release_day(
     title: String,
     releaseDay: String,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<(), String> {
-    repo.write()
-        .await
-        .update_banner_release_day(title, releaseDay)
+    repo.update_banner_release_day(title, releaseDay, userName)
         .await
 }
 
@@ -209,11 +246,10 @@ async fn update_banner_release_day(
 async fn update_banner_release_time(
     title: String,
     releaseTime: String,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<(), String> {
-    repo.write()
-        .await
-        .update_banner_release_time(title, releaseTime)
+    repo.update_banner_release_time(title, releaseTime, userName)
         .await
 }
 
@@ -222,17 +258,88 @@ async fn update_banner_release_time(
 async fn get_paged_banners(
     pageSize: usize,
     pageCount: usize,
+    userName: String,
     repo: RepoLock<'_>,
 ) -> Result<Vec<Banner>, String> {
-    repo.read()
-        .await
-        .get_paged_banners(pageSize, pageCount)
-        .await
+    repo.get_paged_banners(pageSize, pageCount, userName).await
+}
+
+async fn monitor_db(db: sqlx::Pool<Sqlite>, app_handle: tauri::AppHandle) {
+    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(MONITOR_INTERVAL));
+    loop {
+        ticker.tick().await;
+
+        if let Err(e) = check_for_attacks(&db, &app_handle).await {
+            eprintln!("Error checking logs: {:?}", e);
+        }
+    }
+}
+
+async fn check_for_attacks(
+    db: &sqlx::Pool<Sqlite>,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), sqlx::Error> {
+    let now = time::OffsetDateTime::now_utc();
+    let cutoff = now - tokio::time::Duration::from_secs(MONITOR_INTERVAL);
+    let logs: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT user_name, timestamp
+        FROM Logs
+        WHERE timestamp >= ?
+        "#,
+    )
+    .bind(
+        cutoff
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap(),
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut user_actions: HashMap<String, usize> = HashMap::new();
+
+    for (user, _) in logs {
+        *user_actions.entry(user).or_insert(0) += 1;
+    }
+
+    for (user, count) in user_actions {
+        if count >= SUS_ACTION_COUNT {
+            notify_attack(&user, app_handle);
+            sqlx::query(
+                r#"
+                INSERT INTO SuspiciousUsers (user_name) VALUES (?);
+            "#,
+            )
+            .bind(&user)
+            .execute(db)
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn notify_attack(user_name: &str, app_handle: &tauri::AppHandle) {
+    app_handle.emit("attack_detected", user_name).unwrap();
 }
 
 pub fn run_app(db: sqlx::Pool<Sqlite>) {
+    let monitor_pool = db.clone();
+
     tauri::Builder::default()
-        .manage(RwLock::new(BannerRepo::new(db)))
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+
+            thread::spawn(move || {
+                let async_runtime = tokio::runtime::Runtime::new().unwrap();
+                async_runtime.block_on(async move {
+                    monitor_db(monitor_pool, app_handle).await;
+                })
+            });
+
+            Ok(())
+        })
+        .manage(BannerRepo::new(db))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             add_banner,
@@ -247,7 +354,8 @@ pub fn run_app(db: sqlx::Pool<Sqlite>) {
             get_paged_banners,
             check_network,
             register_user,
-            login
+            login,
+            simulate_attack
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

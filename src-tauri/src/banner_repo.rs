@@ -91,7 +91,7 @@ impl BannerRepo {
         }
     }
 
-    pub async fn add_banner(&self, banner: Banner) -> Result<(), String> {
+    pub async fn add_banner(&self, banner: Banner, user_name: String) -> Result<(), String> {
         sqlx::query(
             r#"
             INSERT INTO Banners (
@@ -100,8 +100,9 @@ impl BannerRepo {
                 release_day,
                 release_time,
                 current_episodes,
-                total_episodes
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                total_episodes,
+                user_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&banner.image_binary)
@@ -110,6 +111,24 @@ impl BannerRepo {
         .bind(&banner.release_time)
         .bind(banner.current_episodes as i64)
         .bind(banner.total_episodes as i64)
+        .bind(user_name.clone())
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let timestamp = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+        INSERT INTO Logs (user_name, action, timestamp)
+        VALUES (?, ?, ?)
+        "#,
+        )
+        .bind(user_name)
+        .bind("add")
+        .bind(timestamp)
         .execute(&self.database)
         .await
         .map_err(|e| e.to_string())?;
@@ -117,12 +136,30 @@ impl BannerRepo {
         Ok(())
     }
 
-    pub async fn delete_banner(&self, title: String) -> Result<(), String> {
-        sqlx::query(r#"DELETE FROM Banners WHERE title = ?"#)
+    pub async fn delete_banner(&self, title: String, user_name: String) -> Result<(), String> {
+        sqlx::query(r#"DELETE FROM Banners WHERE title = ? AND user_name = ?"#)
             .bind(title)
+            .bind(user_name.clone())
             .execute(&self.database)
             .await
             .map_err(|e| e.to_string())?;
+
+        let timestamp = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+        INSERT INTO Logs (user_name, action, timestamp)
+        VALUES (?, ?, ?)
+        "#,
+        )
+        .bind(user_name)
+        .bind("delete")
+        .bind(timestamp)
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -132,14 +169,16 @@ impl BannerRepo {
         query: String,
         page_size: usize,
         page_count: usize,
+        user_name: String,
     ) -> Result<Vec<Banner>, String> {
         sqlx::query_as(
             r#"
         SELECT * FROM Banners
-        WHERE title LIKE ?
+        WHERE title LIKE ? AND user_name = ?
         LIMIT ? OFFSET ?"#,
         )
         .bind(format!("%{}%", query))
+        .bind(user_name)
         .bind(page_size as i64)
         .bind(page_count as i64 * page_size as i64)
         .fetch_all(&self.database)
@@ -147,8 +186,9 @@ impl BannerRepo {
         .map_err(|e| e.to_string())
     }
 
-    pub async fn get_all_banners(&self) -> Result<Vec<Banner>, String> {
-        sqlx::query_as(r#"SELECT * FROM Banners"#)
+    pub async fn get_all_banners(&self, user_name: String) -> Result<Vec<Banner>, String> {
+        sqlx::query_as(r#"SELECT * FROM Banners WHERE user_name = ?"#)
+            .bind(user_name)
             .fetch_all(&self.database)
             .await
             .map_err(|e| e.to_string())
@@ -158,15 +198,34 @@ impl BannerRepo {
         &self,
         title: String,
         current_episodes: u32,
+        user_name: String,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
         UPDATE Banners
         SET current_episodes = ?
-        WHERE title = ?"#,
+        WHERE title = ? AND user_name = ?"#,
         )
         .bind(current_episodes)
         .bind(title)
+        .bind(user_name.clone())
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let timestamp = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+        INSERT INTO Logs (user_name, action, timestamp)
+        VALUES (?, ?, ?)
+        "#,
+        )
+        .bind(user_name)
+        .bind("update current episodes")
+        .bind(timestamp)
         .execute(&self.database)
         .await
         .map_err(|e| e.to_string())?;
@@ -178,15 +237,34 @@ impl BannerRepo {
         &self,
         title: String,
         total_episodes: u32,
+        user_name: String,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
         UPDATE Banners
         SET total_episodes = ?
-        WHERE title = ?"#,
+        WHERE title = ? AND user_name = ?"#,
         )
         .bind(total_episodes)
         .bind(title)
+        .bind(user_name.clone())
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let timestamp = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+        INSERT INTO Logs (user_name, action, timestamp)
+        VALUES (?, ?, ?)
+        "#,
+        )
+        .bind(user_name)
+        .bind("update total episodes")
+        .bind(timestamp)
         .execute(&self.database)
         .await
         .map_err(|e| e.to_string())?;
@@ -198,15 +276,34 @@ impl BannerRepo {
         &self,
         title: String,
         release_day: String,
+        user_name: String,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
         UPDATE Banners
         SET release_day = ?
-        WHERE title = ?"#,
+        WHERE title = ? AND user_name = ?"#,
         )
         .bind(release_day)
         .bind(title)
+        .bind(user_name.clone())
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let timestamp = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+        INSERT INTO Logs (user_name, action, timestamp)
+        VALUES (?, ?, ?)
+        "#,
+        )
+        .bind(user_name)
+        .bind("update release day")
+        .bind(timestamp)
         .execute(&self.database)
         .await
         .map_err(|e| e.to_string())?;
@@ -218,15 +315,34 @@ impl BannerRepo {
         &self,
         title: String,
         release_time: String,
+        user_name: String,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
         UPDATE Banners
         SET release_time = ?
-        WHERE title = ?"#,
+        WHERE title = ? AND user_name = ?"#,
         )
         .bind(release_time)
         .bind(title)
+        .bind(user_name.clone())
+        .execute(&self.database)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let timestamp = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+        INSERT INTO Logs (user_name, action, timestamp)
+        VALUES (?, ?, ?)
+        "#,
+        )
+        .bind(user_name)
+        .bind("update release time")
+        .bind(timestamp)
         .execute(&self.database)
         .await
         .map_err(|e| e.to_string())?;
@@ -238,10 +354,12 @@ impl BannerRepo {
         &self,
         page_size: usize,
         page_count: usize,
+        user_name: String,
     ) -> Result<Vec<Banner>, String> {
         sqlx::query_as(
             r#"
             SELECT * FROM banners
+            WHERE user_name = ?
             ORDER BY 
             ( 
                 ( 
@@ -260,6 +378,7 @@ impl BannerRepo {
             )
             LIMIT ? OFFSET ?;"#,
         )
+        .bind(user_name)
         .bind(page_size as i64)
         .bind(page_count as i64 * page_size as i64)
         .fetch_all(&self.database)
@@ -271,12 +390,15 @@ impl BannerRepo {
         &self,
         page_size: usize,
         page_count: usize,
+        user_name: String,
     ) -> Result<Vec<Banner>, String> {
         sqlx::query_as(
             r#"
         SELECT * FROM Banners
+        WHERE user_name = ?
         LIMIT ? OFFSET ?"#,
         )
+        .bind(user_name)
         .bind(page_size as i64)
         .bind(page_count as i64 * page_size as i64)
         .fetch_all(&self.database)

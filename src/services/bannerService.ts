@@ -13,9 +13,14 @@ export interface Banner {
 export const pageSize = 20;
 
 export class BannerLocalMemory {
+    public currentUser: string = "";
+    public isAdmin: boolean = false;
     private banners: Banner[] = [];
     private changes: { method: string; data: any }[] = [];
-    public t: string = "local";
+
+    async simulate_attack() {
+        await invoke ("simulate_attack", {userName: "bobross"});
+    }
 
     async login(_userName: string, _password: string): Promise<number> {
         return -1;
@@ -120,13 +125,23 @@ export class BannerLocalMemory {
 }
 
 export class BannerService {
-    public t: string = "back";
+    public currentUser: string = "";
+    public isAdmin: boolean = false;
+
+    async simulate_attack() {
+        await invoke ("simulate_attack", {userName: "bobross"});
+    }
+
     async login(userName: string, password: string): Promise<number> {
         const result = await invoke<LoginResult> ("login", {userName, password});
         switch (result.status) {
             case 'Admin':
+                this.currentUser = userName;
+                this.isAdmin = true;
                 return 0;
             case 'User':
+                this.currentUser = userName;
+                this.isAdmin = false;
                 return 1;
             case 'Fail':
               console.error(result.error);
@@ -139,39 +154,35 @@ export class BannerService {
     }
 
     async addBanner(banner: Banner) {
-        await invoke ("add_banner", { banner });
+        await invoke ("add_banner", { banner, userName: this.currentUser });
     }
 
-    async deleteBanner(id: string) {
-        await invoke("delete_banner", { title: id })
+    async deleteBanner(title: string) {
+        await invoke("delete_banner", { title, userName: this.currentUser  })
     }
 
     async getPagedBanners(pageCount: number): Promise<Banner[]> {
-        return await invoke("get_paged_banners", {pageSize, pageCount})
+        return await invoke("get_paged_banners", {pageSize, pageCount, userName: this.currentUser })
     }
 
     async searchBanners(query: string, pageCount: number): Promise<Banner[]> {
-        return await invoke("search_banners", { query, pageSize, pageCount })
+        return await invoke("search_banners", { query, pageSize, pageCount, userName: this.currentUser  })
     }
 
-    async getAllBanners(): Promise<Banner[]> {
-        return await invoke("get_all_banners");
+    async updateCurrentEpisodes(title: string, current_episodes: number) {
+        await invoke("update_banner_current_episodes", { title, currentEpisodes: current_episodes, userName: this.currentUser  });
     }
 
-    async updateCurrentEpisodes(id: string, current_episodes: number) {
-        await invoke("update_banner_current_episodes", { title: id, currentEpisodes: current_episodes });
+    async updateTotalEpisodes(title: string, total_episodes: number) {
+        await invoke("update_banner_total_episodes", { title, totalEpisodes: total_episodes, userName: this.currentUser  });
     }
 
-    async updateTotalEpisodes(id: string, total_episodes: number) {
-        await invoke("update_banner_total_episodes", { title: id, totalEpisodes: total_episodes });
+    async updateReleaseDay(title: string, release_day: string) {
+        await invoke("update_banner_release_day", { title, releaseDay: release_day, userName: this.currentUser });
     }
 
-    async updateReleaseDay(id: string, release_day: string) {
-        await invoke("update_banner_release_day", { title: id, releaseDay: release_day });
-    }
-
-    async updateReleaseTime(id: string, release_time: string) {
-        await invoke("update_banner_release_time", { title: id, releaseTime: release_time });
+    async updateReleaseTime(title: string, release_time: string) {
+        await invoke("update_banner_release_time", { title, releaseTime: release_time, userName: this.currentUser });
     }
 
     async syncServer (

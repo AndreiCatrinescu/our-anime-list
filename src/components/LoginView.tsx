@@ -7,7 +7,7 @@ interface Props {
   handleRegister: () => void;
 }
 
-export default function LoginScreen({
+function LoginScreen({
   userName,
   password,
   userNameChange,
@@ -48,3 +48,5 @@ export default function LoginScreen({
     </div>
   );
 }
+
+export default LoginScreen;
