@@ -2,9 +2,10 @@ import View from "./ViewType";
 
 interface Props {
   handleViewChange: (item: View) => void;
+  isAdmin: boolean;
 }
 
-function HomeView({ handleViewChange }: Props) {
+function HomeView({ handleViewChange, isAdmin }: Props) {
   return (
     <div
       className="d-flex flex-column gap-3 align-items-center justify-content-center"
@@ -28,6 +29,14 @@ function HomeView({ handleViewChange }: Props) {
       >
         Modify Banners
       </button>
+      {isAdmin && (
+        <button
+          onClick={() => handleViewChange("dashboard")}
+          className="btn btn-warning btn-lg w-50"
+        >
+          DashBoard
+        </button>
+      )}
     </div>
   );
 }
